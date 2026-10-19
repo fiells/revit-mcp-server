@@ -1,6 +1,6 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Autodesk.Revit.UI;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -15,28 +15,30 @@ namespace revit_mcp_plugin.Utils
     /// </summary>
     public static class ClaudeDesktopConfigurator
     {
-        private const string ConfigFileName = "claude_desktop_config.json";
+        private const string Tag = "ClaudeDesktopConfigurator";
         private const string McpServerName = "revit-mcp";
 
         /// <summary>
         /// Ensures that Claude Desktop is configured to connect to the Revit MCP server.
-        /// Safe to call every startup — only writes when the config is missing or stale.
+        /// Safe to call every startup — only writes when a config is missing or stale.
+        /// Every Claude Desktop config folder found on the machine is updated, because
+        /// it is not possible to tell which one the installed Claude Desktop reads.
         /// Creates timestamped backups before any modification and validates after write.
         /// </summary>
         public static void EnsureConfigured()
         {
-            const string Tag = "ClaudeDesktopConfigurator";
             try
             {
                 // 1. Log start
                 McpLogger.Info(Tag, "Checking Claude Desktop configuration");
 
-                // 2. Find Claude Desktop directory
-                string claudeDir = GetClaudeDesktopDir();
-                if (claudeDir == null)
+                // 2. Find Claude Desktop config folders
+                List<string> claudeDirs = ClaudeDesktopPaths.GetExistingDirectories();
+                if (claudeDirs.Count == 0)
                 {
-                    McpLogger.Warn(Tag, "Claude Desktop directory not found — skipping auto-config");
-                    return;
+                    // Claude Desktop not installed yet — use the standard path so the
+                    // config is ready when the user eventually installs it.
+                    claudeDirs.Add(ClaudeDesktopPaths.StandardDirectory);
                 }
 
                 // 3. Resolve server and node paths
@@ -50,8 +52,51 @@ namespace revit_mcp_plugin.Utils
                     return;
                 }
 
+                bool changed = false;
+                foreach (string claudeDir in claudeDirs)
+                {
+                    changed |= UpdateConfig(claudeDir, nodePath, serverPath);
+                }
+
+                // Notify the user (only when we actually changed something)
+                if (changed)
+                {
+                    try
+                    {
+                        var td = new TaskDialog("Revit MCP Plugin")
+                        {
+                            MainInstruction = "Claude Desktop configured automatically",
+                            MainContent =
+                                "The Revit MCP server has been registered in Claude Desktop.\n\n" +
+                                "Restart Claude Desktop to activate the tools.\n\n" +
+                                "(This message only appears when the configuration is updated)",
+                            CommonButtons = TaskDialogCommonButtons.Ok
+                        };
+                        td.Show();
+                    }
+                    catch
+                    {
+                        // If TaskDialog fails (e.g. during silent startup), ignore
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Never crash Revit because of auto-config
+                McpLogger.Error(Tag, "Claude Desktop auto-config failed (non-fatal)", ex);
+            }
+        }
+
+        /// <summary>
+        /// Writes the revit-mcp entry into the config in one Claude Desktop folder.
+        /// Returns true when the file was changed.
+        /// </summary>
+        private static bool UpdateConfig(string claudeDir, string nodePath, string serverPath)
+        {
+            try
+            {
                 // 4. Read existing config file (if present)
-                string configPath = Path.Combine(claudeDir, ConfigFileName);
+                string configPath = Path.Combine(claudeDir, ClaudeDesktopPaths.ConfigFileName);
                 string existingJson = null;
 
                 if (File.Exists(configPath))
@@ -62,7 +107,7 @@ namespace revit_mcp_plugin.Utils
                     }
                     catch (Exception readEx)
                     {
-                        McpLogger.Warn(Tag, $"Could not read config file: {readEx.Message}");
+                        McpLogger.Warn(Tag, $"Could not read config file {configPath}: {readEx.Message}");
                     }
                 }
 
@@ -123,8 +168,8 @@ namespace revit_mcp_plugin.Utils
                         existingArgs != null && existingArgs.Length > 0 &&
                         existingArgs[0] == serverPath)
                     {
-                        McpLogger.Info(Tag, "Configuration already correct — no changes needed");
-                        return;
+                        McpLogger.Info(Tag, $"Configuration already correct in {configPath} — no changes needed");
+                        return false;
                     }
                 }
 
@@ -160,37 +205,20 @@ namespace revit_mcp_plugin.Utils
                     string verification = File.ReadAllText(configPath);
                     JObject.Parse(verification);
                     McpLogger.Info(Tag,
-                        $"Claude Desktop configured successfully: {nodePath} {serverPath}");
+                        $"Claude Desktop configured successfully in {configPath}: {nodePath} {serverPath}");
                 }
                 catch (Exception valEx)
                 {
                     McpLogger.Error(Tag,
-                        "Post-write validation failed — config file may be corrupt", valEx);
+                        $"Post-write validation failed — config file {configPath} may be corrupt", valEx);
                 }
 
-                // 13. Notify the user (only when we actually changed something)
-                try
-                {
-                    var td = new TaskDialog("Revit MCP Plugin")
-                    {
-                        MainInstruction = "Claude Desktop configured automatically",
-                        MainContent =
-                            "The Revit MCP server has been registered in Claude Desktop.\n\n" +
-                            "Restart Claude Desktop to activate the tools.\n\n" +
-                            "(This message only appears when the configuration is updated)",
-                        CommonButtons = TaskDialogCommonButtons.Ok
-                    };
-                    td.Show();
-                }
-                catch
-                {
-                    // If TaskDialog fails (e.g. during silent startup), ignore
-                }
+                return true;
             }
             catch (Exception ex)
             {
-                // Never crash Revit because of auto-config
-                McpLogger.Error(Tag, "Claude Desktop auto-config failed (non-fatal)", ex);
+                McpLogger.Error(Tag, $"Failed to update Claude Desktop config in {claudeDir}", ex);
+                return false;
             }
         }
 
@@ -239,44 +267,6 @@ namespace revit_mcp_plugin.Utils
                 }
             }
             return null;
-        }
-
-        // -----------------------------------------------------------------
-        // Claude Desktop detection
-        // -----------------------------------------------------------------
-
-        private static string GetClaudeDesktopDir()
-        {
-            // Standard install
-            string standard = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Claude");
-            if (Directory.Exists(standard))
-                return standard;
-
-            // MSIX (Microsoft Store) install
-            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string packagesDir = Path.Combine(localAppData, "Packages");
-            if (Directory.Exists(packagesDir))
-            {
-                try
-                {
-                    string claudePkg = Directory.GetDirectories(packagesDir, "Claude_*").FirstOrDefault();
-                    if (claudePkg != null)
-                    {
-                        string msixDir = Path.Combine(claudePkg, "LocalCache", "Roaming", "Claude");
-                        if (Directory.Exists(msixDir))
-                            return msixDir;
-                    }
-                }
-                catch
-                {
-                    // Permission issue reading Packages — skip MSIX check
-                }
-            }
-
-            // Claude Desktop not installed — return standard path anyway so the
-            // config is ready when the user eventually installs it.
-            return standard;
         }
     }
 }

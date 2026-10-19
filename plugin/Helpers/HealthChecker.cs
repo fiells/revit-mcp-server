@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using Newtonsoft.Json.Linq;
+using revit_mcp_plugin.Utils;
 
 namespace revit_mcp_plugin.Helpers
 {
@@ -27,7 +28,6 @@ namespace revit_mcp_plugin.Helpers
     public static class HealthChecker
     {
         private const string Tag = "HealthChecker";
-        private const string ConfigFileName = "claude_desktop_config.json";
         private const string McpServerName = "revit-mcp";
 
         // -----------------------------------------------------------------
@@ -187,43 +187,49 @@ namespace revit_mcp_plugin.Helpers
         }
 
         /// <summary>
-        /// Checks that Claude Desktop is installed and that its config file
-        /// contains the revit-mcp server entry.
+        /// Checks that Claude Desktop is installed and that every config file it may
+        /// read contains the revit-mcp server entry.
         /// </summary>
         public static HealthCheckResult CheckClaudeDesktopConfig()
         {
             var result = new HealthCheckResult { Name = "Claude Desktop Config" };
             try
             {
-                string claudeDir = FindClaudeDesktopDir();
-                if (claudeDir == null)
+                List<string> claudeDirs = ClaudeDesktopPaths.GetExistingDirectories();
+                if (claudeDirs.Count == 0)
                 {
                     result.Passed = false;
                     result.Message = "Claude Desktop not installed";
                     return result;
                 }
 
-                string configPath = Path.Combine(claudeDir, ConfigFileName);
-                if (!File.Exists(configPath))
+                var missing = new List<string>();
+                foreach (string claudeDir in claudeDirs)
                 {
-                    result.Passed = false;
-                    result.Message = "Config file missing";
-                    return result;
+                    string configPath = Path.Combine(claudeDir, ClaudeDesktopPaths.ConfigFileName);
+                    if (!File.Exists(configPath))
+                    {
+                        missing.Add($"{configPath} (file missing)");
+                        continue;
+                    }
+
+                    JObject config = JObject.Parse(File.ReadAllText(configPath));
+                    var mcpServers = config["mcpServers"] as JObject;
+                    if (mcpServers == null || mcpServers[McpServerName] == null)
+                        missing.Add(configPath);
                 }
 
-                string json = File.ReadAllText(configPath);
-                JObject config = JObject.Parse(json);
-                var mcpServers = config["mcpServers"] as JObject;
-
-                if (mcpServers == null || mcpServers[McpServerName] == null)
+                if (missing.Count > 0)
                 {
                     result.Passed = false;
-                    result.Message = "revit-mcp entry missing";
+                    result.Message = "revit-mcp entry missing in " + string.Join("; ", missing);
                     return result;
                 }
 
                 result.Passed = true;
-                result.Message = "revit-mcp entry found in Claude Desktop config";
+                result.Message = claudeDirs.Count == 1
+                    ? "revit-mcp entry found in Claude Desktop config"
+                    : $"revit-mcp entry found in all {claudeDirs.Count} Claude Desktop configs";
             }
             catch (Exception ex)
             {
@@ -275,52 +281,6 @@ namespace revit_mcp_plugin.Helpers
                 McpLogger.Warn(Tag, $"Port connectivity check failed: {ex.Message}");
             }
             return result;
-        }
-
-        // -----------------------------------------------------------------
-        // Private helpers
-        // -----------------------------------------------------------------
-
-        /// <summary>
-        /// Locates the Claude Desktop configuration directory.
-        /// Checks the standard %APPDATA%\Claude path first, then the MSIX
-        /// (Microsoft Store) location under %LOCALAPPDATA%\Packages\Claude_*.
-        /// Returns null if neither path exists.
-        /// </summary>
-        private static string FindClaudeDesktopDir()
-        {
-            try
-            {
-                // Standard install
-                string standard = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Claude");
-                if (Directory.Exists(standard))
-                    return standard;
-
-                // MSIX (Microsoft Store) install
-                string localAppData =
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                string packagesDir = Path.Combine(localAppData, "Packages");
-                if (Directory.Exists(packagesDir))
-                {
-                    string claudePkg = Directory
-                        .GetDirectories(packagesDir, "Claude_*")
-                        .FirstOrDefault();
-                    if (claudePkg != null)
-                    {
-                        string msixDir = Path.Combine(
-                            claudePkg, "LocalCache", "Roaming", "Claude");
-                        if (Directory.Exists(msixDir))
-                            return msixDir;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                McpLogger.Warn(Tag, $"Error finding Claude Desktop directory: {ex.Message}");
-            }
-
-            return null;
         }
     }
 }

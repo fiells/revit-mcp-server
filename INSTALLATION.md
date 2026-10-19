@@ -205,18 +205,21 @@ The `install.ps1` script automatically configures Claude Desktop. If you need to
 powershell -ExecutionPolicy Bypass -File scripts\fix-mcp.ps1
 ```
 
-Or manually edit `%APPDATA%\Claude\claude_desktop_config.json`:
+Or open Claude Desktop → Settings → Developer → Edit Config, which opens the file Claude Desktop actually reads. Depending on how Claude Desktop was installed it is in `%LOCALAPPDATA%\Claude-Data\claude_*`, `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude` or `%APPDATA%\Claude`. Add the local server (replace `2022` with your Revit version):
 
 ```json
 {
     "mcpServers": {
-        "mcp-server-for-revit": {
-            "command": "npx",
-            "args": ["-y", "mcp-server-for-revit"]
+        "revit-mcp": {
+            "command": "C:\\Users\\<you>\\AppData\\Roaming\\Autodesk\\Revit\\Addins\\2022\\revit_mcp_plugin\\Commands\\RevitMCPCommandSet\\server\\runtime\\node.exe",
+            "args": ["C:\\Users\\<you>\\AppData\\Roaming\\Autodesk\\Revit\\Addins\\2022\\revit_mcp_plugin\\Commands\\RevitMCPCommandSet\\server\\build\\index.js"]
         }
     }
 }
 ```
+
+> [!IMPORTANT]
+> Do not use `npx -y mcp-server-for-revit`: that npm package is an older server from another project (23 tools) and does not match this plugin.
 
 Restart Claude Desktop and verify that the hammer icon appears at the bottom right.
 
@@ -224,8 +227,9 @@ Restart Claude Desktop and verify that the hammer icon appears at the bottom rig
 
 Run the following command to register the MCP server:
 
-```bash
-claude mcp add mcp-server-for-revit -- npx -y mcp-server-for-revit
+```powershell
+$server = "$env:APPDATA\Autodesk\Revit\Addins\2022\revit_mcp_plugin\Commands\RevitMCPCommandSet\server"
+claude mcp add revit-mcp -- "$server\runtime\node.exe" "$server\build\index.js"
 ```
 
 ### For Other MCP Clients (Cline, Continue, etc.)
