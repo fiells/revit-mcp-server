@@ -73,7 +73,7 @@ flowchart LR
 Open PowerShell and paste this command:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/fiells/revit-mcp-server/main/scripts/install.ps1 | iex"
+powershell -NoExit -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fiells/revit-mcp-server/main/scripts/install.ps1)))"
 ```
 
 The script:
