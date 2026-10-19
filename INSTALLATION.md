@@ -70,7 +70,7 @@ dotnet --list-sdks
 
 ### Step 1: Download the Release
 
-1. Go to the [Releases](https://github.com/LuDattilo/revit-mcp-server/releases) page
+1. Go to the [Releases](https://github.com/fiells/revit-mcp-server/releases) page
 2. Download the ZIP matching your Revit version:
    - `mcp-servers-for-revit-vX.Y.Z-Revit2019.zip`
    - `mcp-servers-for-revit-vX.Y.Z-Revit2020.zip`
@@ -132,7 +132,7 @@ Addins/<version>/
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/LuDattilo/revit-mcp-server.git
+git clone https://github.com/fiells/revit-mcp-server.git
 cd mcp-servers-for-revit
 ```
 
