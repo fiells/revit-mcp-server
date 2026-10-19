@@ -22,6 +22,14 @@ namespace RevitMCPCommandSet.Services
 
         public void Execute(UIApplication app)
         {
+#if !REVIT2022_OR_GREATER
+            Result = new AIResult<object>
+            {
+                Success = false,
+                Message = "Deleting worksets requires Revit 2022 or newer"
+            };
+            _resetEvent.Set();
+#else
             try
             {
                 var doc = app.ActiveUIDocument.Document;
@@ -146,6 +154,7 @@ namespace RevitMCPCommandSet.Services
             {
                 _resetEvent.Set();
             }
+#endif
         }
 
         public string GetName() => "Delete Workset";

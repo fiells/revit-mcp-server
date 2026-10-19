@@ -1,6 +1,6 @@
 # Installation Guide
 
-Complete guide to install and configure **mcp-servers-for-revit** on Autodesk Revit 2023-2027.
+Complete guide to install and configure **mcp-servers-for-revit** on Autodesk Revit 2019-2027.
 
 ---
 
@@ -24,7 +24,7 @@ Complete guide to install and configure **mcp-servers-for-revit** on Autodesk Re
 
 | Component | Version | Notes |
 |-----------|---------|-------|
-| **Autodesk Revit** | 2023, 2024, 2025, 2026, or 2027 | Installed with an active license |
+| **Autodesk Revit** | 2019 through 2027 | Installed with an active license |
 | **Claude Desktop** | Any | Download from [claude.ai/download](https://claude.ai/download) |
 
 > **Node.js not required.** The Node.js runtime is included in the installation package (portable, not installed system-wide).
@@ -42,7 +42,7 @@ Complete guide to install and configure **mcp-servers-for-revit** on Autodesk Re
 |-----------|---------|------------------------|
 | **Node.js** | 18 or higher | To compile the TypeScript server |
 | **npm** | Included with Node.js | To install dependencies |
-| **.NET Framework 4.8 SDK** | 4.8+ | Revit 2023-2024 |
+| **.NET Framework 4.8 SDK** | 4.8+ | Revit 2019-2024 (the 4.8 runtime must also be installed for Revit 2019/2020) |
 | **.NET 8.0 SDK** | 8.0+ | Revit 2025-2026 |
 | **.NET 10.0 SDK** | 10.0+ (preview) | Revit 2027 |
 | **Visual Studio 2022** | 17.x (optional) | Build and debug |
@@ -72,6 +72,10 @@ dotnet --list-sdks
 
 1. Go to the [Releases](https://github.com/LuDattilo/revit-mcp-server/releases) page
 2. Download the ZIP matching your Revit version:
+   - `mcp-servers-for-revit-vX.Y.Z-Revit2019.zip`
+   - `mcp-servers-for-revit-vX.Y.Z-Revit2020.zip`
+   - `mcp-servers-for-revit-vX.Y.Z-Revit2021.zip`
+   - `mcp-servers-for-revit-vX.Y.Z-Revit2022.zip`
    - `mcp-servers-for-revit-vX.Y.Z-Revit2023.zip`
    - `mcp-servers-for-revit-vX.Y.Z-Revit2024.zip`
    - `mcp-servers-for-revit-vX.Y.Z-Revit2025.zip`

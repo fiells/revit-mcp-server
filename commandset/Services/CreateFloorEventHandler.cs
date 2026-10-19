@@ -3,6 +3,7 @@ using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
 using RevitMCPCommandSet.Models.Common;
 using RevitMCPSDK.API.Interfaces;
+using RevitMCPCommandSet.Utils;
 
 namespace RevitMCPCommandSet.Services
 {
@@ -60,7 +61,7 @@ namespace RevitMCPCommandSet.Services
                     try
                     {
                         var curveLoops = new List<CurveLoop> { boundary };
-                        floor = Floor.Create(doc, curveLoops, floorType.Id, level.Id);
+                        floor = RevitApiCompat.CreateFloor(doc, curveLoops, floorType.Id, level.Id);
                         transaction.Commit();
                     }
                     catch

@@ -1,5 +1,6 @@
 using Autodesk.Revit.UI;
 using RevitMCPSDK.API.Interfaces;
+using RevitMCPCommandSet.Utils;
 
 namespace RevitMCPCommandSet.Services
 {
@@ -80,7 +81,7 @@ namespace RevitMCPCommandSet.Services
                 var taggedElementIds = new HashSet<long>();
                 foreach (IndependentTag tag in tagCollector)
                 {
-                    foreach (var id in tag.GetTaggedLocalElementIds())
+                    foreach (var id in tag.GetTaggedIds())
                     {
                         if (id != ElementId.InvalidElementId)
 #if REVIT2024_OR_GREATER

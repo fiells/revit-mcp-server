@@ -1,6 +1,7 @@
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitMCPSDK.API.Interfaces;
+using RevitMCPCommandSet.Utils;
 using RevitMCPCommandSet.Helpers;
 
 namespace RevitMCPCommandSet.Services
@@ -100,7 +101,7 @@ namespace RevitMCPCommandSet.Services
                     try
                     {
                         // Check if the tag has a valid host
-                        var localIds = tag.GetTaggedLocalElementIds();
+                        var localIds = tag.GetTaggedIds();
                         if (localIds == null || localIds.Count == 0)
                         {
                             isEmpty = true;
