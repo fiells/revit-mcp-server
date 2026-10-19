@@ -1,4 +1,4 @@
-[![Cover Image](./assets/cover.png?v=2)](https://github.com/LuDattilo/revit-mcp-server)
+[![Cover Image](./assets/cover.png?v=2)](https://github.com/fiells/revit-mcp-server)
 
 # mcp-servers-for-revit
 
@@ -14,7 +14,7 @@ mcp-servers-for-revit enables AI clients like Claude, Cline, and other MCP-compa
 ## Key Features
 
 - **124 MCP tools** — project info, model health, clash detection, element CRUD, batch operations, data export (PDF/DWG/IFC/CSV)
-- **Revit 2023, 2024, 2025, 2026, 2027** — fully tested on all five versions
+- **Revit 2019 through 2027** — 2023-2027 fully tested; 2019-2022 builds compile against each version's API but are not yet tested in Revit (see [Supported Revit Versions](#supported-revit-versions))
 - **Language-independent** — works with any Revit UI language (English, Italian, French, German, etc.) using BuiltInCategory resolution
 - **Built-in Claude chat panel** — dockable panel inside Revit with direct AI access (Anthropic API, extended thinking enabled)
 - **Real-time execution** — AI requests are executed immediately on the active model via TCP/JSON-RPC 2.0
@@ -49,7 +49,7 @@ flowchart LR
 | Requirement | Details |
 |-------------|---------|
 | **Node.js** | 18+ (for the MCP server) |
-| **Autodesk Revit** | 2023, 2024, 2025, 2026, or 2027 |
+| **Autodesk Revit** | 2019 through 2027 |
 | **OS** | Windows 10/11 (Revit is Windows-only) |
 | **Anthropic API key** (optional) | Required only for the built-in chat panel. Set via `%USERPROFILE%\.claude\api_key.txt` or env `ANTHROPIC_API_KEY` |
 
@@ -58,7 +58,7 @@ flowchart LR
 | Requirement | Details |
 |-------------|---------|
 | **Visual Studio 2022** | With .NET desktop development workload |
-| **.NET Framework 4.8 SDK** | For Revit 2023-2024 builds |
+| **.NET Framework 4.8 SDK** | For Revit 2019-2024 builds |
 | **.NET 8 SDK** | For Revit 2025-2026 builds |
 | **.NET 10 SDK** (preview) | For Revit 2027 builds |
 | **Node.js 18+** | For the MCP server |
@@ -73,7 +73,7 @@ flowchart LR
 Open PowerShell and paste this command:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/LuDattilo/revit-mcp-server/main/scripts/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/fiells/revit-mcp-server/main/scripts/install.ps1 | iex"
 ```
 
 The script:
@@ -98,7 +98,7 @@ The script:
 #### Option B: Manual install
 
 > [!IMPORTANT]
-> **Download the pre-built ZIP from the [Releases](https://github.com/LuDattilo/revit-mcp-server/releases) page.** Do NOT clone the repository or copy the source code — the source contains `.cs` files, not compiled `.dll` files. The plugin will not work without compiled binaries.
+> **Download the pre-built ZIP from the [Releases](https://github.com/fiells/revit-mcp-server/releases) page.** Do NOT clone the repository or copy the source code — the source contains `.cs` files, not compiled `.dll` files. The plugin will not work without compiled binaries.
 
 Extract the ZIP to:
 
@@ -177,13 +177,36 @@ Click **"Revit MCP Switch"** to start the TCP server. When the status indicator 
 
 | Version | .NET Target | Status | Notes |
 |---------|-------------|--------|-------|
+| **Revit 2019** | .NET Framework 4.8 | Builds, untested in Revit | Requires .NET Framework 4.8 runtime; see limitations below |
+| **Revit 2020** | .NET Framework 4.8 | Builds, untested in Revit | Requires .NET Framework 4.8 runtime; see limitations below |
+| **Revit 2021** | .NET Framework 4.8 | Builds, untested in Revit | See limitations below |
+| **Revit 2022** | .NET Framework 4.8 | Builds, untested in Revit | |
 | **Revit 2023** | .NET Framework 4.8 | Fully tested | Italian localization verified |
 | **Revit 2024** | .NET Framework 4.8 | Built & compatible | Same codebase as R23 |
 | **Revit 2025** | .NET 8 | Fully tested | Structural model (Snowdon Towers) |
 | **Revit 2026** | .NET 8 | Fully tested | Primary development target |
 | **Revit 2027** | .NET 10 | Fully tested | .NET 10 SDK (preview) required |
 
-All tools work across all versions. The command set uses compile-time constants (`REVIT2023`, `REVIT2024`, etc.) to handle API differences between versions (e.g., `ElementId` is `long` in R24+, `int` in R23).
+The command set uses compile-time constants (`REVIT2019_OR_GREATER` ... `REVIT2027_OR_GREATER`) to handle API differences between versions (e.g., `ElementId` is `long` in R24+, `int` before). Wrappers for API that changed in Revit 2022 live in `commandset/Utils/RevitApiCompat.cs`.
+
+### Limitations on Revit 2019-2022
+
+Some tools depend on API that older Revit versions do not have. They return an error message instead of running:
+
+| Tool / option | Needs | Behaviour on older versions |
+|---------------|-------|-----------------------------|
+| `create_surface_based_element` (ceilings) | Revit 2022 | Error: ceilings cannot be created through the API |
+| `delete_workset` | Revit 2022 | Error: worksets cannot be deleted through the API |
+| `batch_export` with `format: "PDF"` (the default) | Revit 2022 | Error; pass `format: "DWG"` or `"IFC"` instead |
+| `create_view_template` | Revit 2020 | Error on Revit 2019 |
+| `create_view_filter` rules `HasValue` / `HasNoValue` | Revit 2020 | Error on Revit 2019; other rule types work |
+
+Other differences:
+
+- Floors are created with `Document.Create.NewFloor` on 2019-2021 (single boundary, no openings).
+- String filter rules are created case-insensitive on 2019-2022, matching the behaviour of 2023+.
+- On 2019-2021, `parameterType` / `parameterGroup` in parameter results are `ParameterType` / `BuiltInParameterGroup` names (e.g. `Text`, `PG_DATA`) rather than Forge type ids. `add_shared_parameter` accepts either form for `parameterGroup` (`IdentityData` or `PG_IDENTITY_DATA`).
+- Revit 2019 uses RevitMCPSDK 2020 (no 2019 package is published); it only calls API that exists in 2019.
 
 ## Supported Tools (124)
 
@@ -339,7 +362,7 @@ The Revit plugin includes a dockable chat panel that connects directly to the An
 
 1. Close Revit
 2. Delete the old installation from `%AppData%\Autodesk\Revit\Addins\<version>\`
-3. Download the correct ZIP from the [Releases](https://github.com/LuDattilo/revit-mcp-server/releases) page
+3. Download the correct ZIP from the [Releases](https://github.com/fiells/revit-mcp-server/releases) page
 4. Extract and verify the folder structure matches the one shown in [Step 1](#1-install-the-revit-plugin)
 5. Restart Revit
 
@@ -378,10 +401,14 @@ The server compiles TypeScript to `server/build/`. During development you can ru
 
 ### Revit Plugin + Command Set
 
-Open `mcp-servers-for-revit.sln` in Visual Studio. The solution contains both the plugin and command set projects. Build configurations target Revit 2023-2027:
+Open `mcp-servers-for-revit.sln` in Visual Studio. The solution contains both the plugin and command set projects. Build configurations target Revit 2019-2027:
 
 | Configuration | Target | .NET |
 |---------------|--------|------|
+| `Debug R19` / `Release R19` | Revit 2019 | .NET Framework 4.8 |
+| `Debug R20` / `Release R20` | Revit 2020 | .NET Framework 4.8 |
+| `Debug R21` / `Release R21` | Revit 2021 | .NET Framework 4.8 |
+| `Debug R22` / `Release R22` | Revit 2022 | .NET Framework 4.8 |
 | `Debug R23` / `Release R23` | Revit 2023 | .NET Framework 4.8 |
 | `Debug R24` / `Release R24` | Revit 2024 | .NET Framework 4.8 |
 | `Debug R25` / `Release R25` | Revit 2025 | .NET 8 |
@@ -429,7 +456,7 @@ mcp-servers-for-revit/
 
 A single `v*` tag drives the entire release. The [release workflow](.github/workflows/release.yml) automatically:
 
-- Builds the Revit plugin + command set for Revit 2023-2027
+- Builds the Revit plugin + command set for Revit 2019-2027
 - Creates a GitHub release with `mcp-servers-for-revit-vX.Y.Z-Revit<year>.zip` assets
 - Publishes the MCP server to npm as [`mcp-server-for-revit`](https://www.npmjs.com/package/mcp-server-for-revit)
 
@@ -449,6 +476,7 @@ git push origin main --tags
 | **Expansion to 80+ tools** | **[mcp-servers-for-revit](https://github.com/mcp-servers-for-revit) community** — lisiting01, jmcouffin, huyan1458, bobbyg603, chuongmep and others expanded the project across three repos | [revit-mcp](https://github.com/mcp-servers-for-revit/revit-mcp), [revit-mcp-plugin](https://github.com/mcp-servers-for-revit/revit-mcp-plugin), [revit-mcp-commandset](https://github.com/mcp-servers-for-revit/revit-mcp-commandset) |
 | **Consolidated repo** | **[sparx-fire](https://sparx-fire.com)** (Bobby Galli) — merged the three repos into a single solution | [mcp-servers-for-revit/mcp-servers-for-revit](https://github.com/mcp-servers-for-revit/mcp-servers-for-revit) |
 | **Current maintainer** | **LuDattilo** — language-independent operation, embedded Claude chat panel, PowerShell installer | [LuDattilo/revit-mcp-server](https://github.com/LuDattilo/revit-mcp-server) |
+| **Revit 2019-2022 fork** | **fiells** — builds and API compatibility for Revit 2019, 2020, 2021 and 2022 | [fiells/revit-mcp-server](https://github.com/fiells/revit-mcp-server) |
 
 ## License
 

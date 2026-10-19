@@ -24,6 +24,15 @@ namespace RevitMCPCommandSet.Services.ViewManagement
 
         public void Execute(UIApplication app)
         {
+#if !REVIT2020_OR_GREATER
+            Result = new AIResult<object>
+            {
+                Success = false,
+                Message = "Creating view templates requires Revit 2020 or newer"
+            };
+            TaskCompleted = true;
+            _resetEvent.Set();
+#else
             try
             {
                 var doc = app.ActiveUIDocument.Document;
@@ -145,6 +154,7 @@ namespace RevitMCPCommandSet.Services.ViewManagement
                 TaskCompleted = true;
                 _resetEvent.Set();
             }
+#endif
         }
 
         public string GetName() => "Create View Template";

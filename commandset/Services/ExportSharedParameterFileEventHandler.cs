@@ -5,6 +5,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitMCPSDK.API.Interfaces;
+using RevitMCPCommandSet.Utils;
 
 namespace RevitMCPCommandSet.Services
 {
@@ -83,7 +84,7 @@ namespace RevitMCPCommandSet.Services
                             {
                                 name = extDef.Name,
                                 guid = extDef.GUID.ToString(),
-                                parameterType = extDef.GetDataType().TypeId ?? "Text"
+                                parameterType = extDef.GetDataTypeName() ?? "Text"
                             });
                         }
                         else if (definition is InternalDefinition intDef)

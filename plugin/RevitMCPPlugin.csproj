@@ -6,12 +6,32 @@
         <UseWindowsForms>true</UseWindowsForms>
         <UseWPF>true</UseWPF>
         <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
-        <Configurations>Debug R23;Debug R24;Debug R25;Debug R26;Debug R27;Release R23;Release R24;Release R25;Release R26;Release R27</Configurations>
+        <Configurations>Debug R19;Debug R20;Debug R21;Debug R22;Debug R23;Debug R24;Debug R25;Debug R26;Debug R27;Release R19;Release R20;Release R21;Release R22;Release R23;Release R24;Release R25;Release R26;Release R27</Configurations>
         <PlatformTarget>x64</PlatformTarget>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 
     </PropertyGroup>
 
+    <PropertyGroup Condition="$(Configuration.Contains('R19'))">
+        <RevitVersion>2019</RevitVersion>
+        <TargetFramework>net48</TargetFramework>
+        <OutputPath>bin\$(Configuration.Split(' ')[0])\$(RevitVersion)\</OutputPath>
+    </PropertyGroup>
+    <PropertyGroup Condition="$(Configuration.Contains('R20'))">
+        <RevitVersion>2020</RevitVersion>
+        <TargetFramework>net48</TargetFramework>
+        <OutputPath>bin\$(Configuration.Split(' ')[0])\$(RevitVersion)\</OutputPath>
+    </PropertyGroup>
+    <PropertyGroup Condition="$(Configuration.Contains('R21'))">
+        <RevitVersion>2021</RevitVersion>
+        <TargetFramework>net48</TargetFramework>
+        <OutputPath>bin\$(Configuration.Split(' ')[0])\$(RevitVersion)\</OutputPath>
+    </PropertyGroup>
+    <PropertyGroup Condition="$(Configuration.Contains('R22'))">
+        <RevitVersion>2022</RevitVersion>
+        <TargetFramework>net48</TargetFramework>
+        <OutputPath>bin\$(Configuration.Split(' ')[0])\$(RevitVersion)\</OutputPath>
+    </PropertyGroup>
     <PropertyGroup Condition="$(Configuration.Contains('R23'))">
         <RevitVersion>2023</RevitVersion>
         <TargetFramework>net48</TargetFramework>
@@ -41,15 +61,28 @@
         <EnableDynamicLoading>true</EnableDynamicLoading>
     </PropertyGroup>
     <PropertyGroup>
+        <!-- RevitMCPSDK is not published for Revit 2019; the 2020 build only uses API that exists in 2019
+             (Transaction, ExternalEvent, FailuresAccessor), and RevitAPI is not strong-named. -->
+        <!-- Nice3point.Revit.Api 2019.2.11 actually ships the 2020 API (RevitAPI 20.0.0.0);
+             2019.2.1 is the last package with the real 2019 API. -->
+        <RevitApiVersion>$(RevitVersion).*</RevitApiVersion>
+        <RevitApiVersion Condition="'$(RevitVersion)' == '2019'">2019.2.1</RevitApiVersion>
+        <RevitMCPSDKVersion>$(RevitVersion).*</RevitMCPSDKVersion>
+        <RevitMCPSDKVersion Condition="'$(RevitVersion)' == '2019'">2020.*</RevitMCPSDKVersion>
+        <!-- The 2020 SDK depends on the 2020 API packages; keep the 2019 ones we reference directly. -->
+        <NoWarn Condition="'$(RevitVersion)' == '2019'">$(NoWarn);NU1605</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup>
         <StartAction>Program</StartAction>
         <StartProgram>C:\Program Files\Autodesk\Revit $(RevitVersion)\Revit.exe</StartProgram>
         <StartArguments>/language ENG</StartArguments>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="Microsoft.CSharp" Version="4.7.0"/>
-        <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitVersion).*"/>
-        <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitVersion).*"/>
-        <PackageReference Include="RevitMCPSDK" Version="$(RevitVersion).*"/>
+        <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitApiVersion)"/>
+        <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitApiVersion)"/>
+        <PackageReference Include="RevitMCPSDK" Version="$(RevitMCPSDKVersion)"/>
     </ItemGroup>
     <ItemGroup>
         <Resource Include="Core\Ressources\icon-16.png"/>

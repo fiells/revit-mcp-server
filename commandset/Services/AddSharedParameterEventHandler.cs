@@ -58,7 +58,11 @@ namespace RevitMCPCommandSet.Services
                 ExternalDefinition externalDef = defGroup.Definitions.get_Item(ParameterName) as ExternalDefinition;
                 if (externalDef == null)
                 {
+#if REVIT2022_OR_GREATER
                     var creationOptions = new ExternalDefinitionCreationOptions(ParameterName, SpecTypeId.String.Text);
+#else
+                    var creationOptions = new ExternalDefinitionCreationOptions(ParameterName, ParameterType.Text);
+#endif
                     externalDef = defGroup.Definitions.Create(creationOptions) as ExternalDefinition;
                 }
 
@@ -109,8 +113,12 @@ namespace RevitMCPCommandSet.Services
                     transaction.Start();
                     try
                     {
+#if REVIT2022_OR_GREATER
                         // Resolve the parameter group (BuiltInParameterGroup -> GroupTypeId)
                         ForgeTypeId groupTypeId = ResolveGroupTypeId(ParameterGroup);
+#else
+                        BuiltInParameterGroup groupTypeId = ResolveParameterGroup(ParameterGroup);
+#endif
                         bool inserted = doc.ParameterBindings.Insert(externalDef, binding, groupTypeId);
 
                         // If already bound, re-insert to update the binding
@@ -162,6 +170,7 @@ namespace RevitMCPCommandSet.Services
             }
         }
 
+#if REVIT2022_OR_GREATER
         private static readonly Dictionary<string, ForgeTypeId> _groupTypeIdCache =
             BuildGroupTypeIdCache();
 
@@ -186,6 +195,30 @@ namespace RevitMCPCommandSet.Services
                 ? typeId
                 : GroupTypeId.Data;
         }
+#else
+        // Revit 2021 and earlier group parameters by BuiltInParameterGroup. Accept both the
+        // GroupTypeId names used on newer versions ("IdentityData") and enum names ("PG_IDENTITY_DATA").
+        private static BuiltInParameterGroup ResolveParameterGroup(string parameterGroup)
+        {
+            if (!string.IsNullOrEmpty(parameterGroup))
+            {
+                string wanted = NormalizeGroupName(parameterGroup);
+                foreach (BuiltInParameterGroup group in Enum.GetValues(typeof(BuiltInParameterGroup)))
+                {
+                    if (group != BuiltInParameterGroup.INVALID && NormalizeGroupName(group.ToString()) == wanted)
+                        return group;
+                }
+            }
+            return BuiltInParameterGroup.PG_DATA;
+        }
+
+        private static string NormalizeGroupName(string name)
+        {
+            if (name.StartsWith("PG_", StringComparison.OrdinalIgnoreCase))
+                name = name.Substring(3);
+            return name.Replace("_", "").Replace(" ", "").ToUpperInvariant();
+        }
+#endif
 
         public string GetName() => "Add Shared Parameter";
     }

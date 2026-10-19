@@ -111,7 +111,7 @@ namespace RevitMCPCommandSet.Services.DataExtraction
 
         private static double ConvertToMm(double feet)
         {
-#if REVIT2022_OR_GREATER
+#if REVIT2021_OR_GREATER
             return UnitUtils.ConvertFromInternalUnits(feet, UnitTypeId.Millimeters);
 #else
             return UnitUtils.ConvertFromInternalUnits(feet, DisplayUnitType.DUT_MILLIMETERS);
@@ -120,7 +120,7 @@ namespace RevitMCPCommandSet.Services.DataExtraction
 
         private static double ConvertToFeet(double mm)
         {
-#if REVIT2022_OR_GREATER
+#if REVIT2021_OR_GREATER
             return UnitUtils.ConvertToInternalUnits(mm, UnitTypeId.Millimeters);
 #else
             return UnitUtils.ConvertToInternalUnits(mm, DisplayUnitType.DUT_MILLIMETERS);

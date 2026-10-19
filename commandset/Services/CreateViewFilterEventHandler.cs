@@ -269,6 +269,8 @@ namespace RevitMCPCommandSet.Services
             return null;
         }
 
+        // String rules in Revit 2022 and earlier take an explicit caseSensitive flag;
+        // 2023+ dropped it and always compares case-insensitively, so pass false to match.
         private FilterRule CreateFilterRule(ElementId paramId, string ruleType, string value)
         {
             switch (ruleType)
@@ -276,31 +278,69 @@ namespace RevitMCPCommandSet.Services
                 case "Equals":
                     if (int.TryParse(value, out int eqIntVal))
                         return ParameterFilterRuleFactory.CreateEqualsRule(paramId, eqIntVal);
+#if REVIT2023_OR_GREATER
                     return ParameterFilterRuleFactory.CreateEqualsRule(paramId, value);
+#else
+                    return ParameterFilterRuleFactory.CreateEqualsRule(paramId, value, false);
+#endif
                 case "DoesNotEqual":
                     if (int.TryParse(value, out int neqIntVal))
                         return ParameterFilterRuleFactory.CreateNotEqualsRule(paramId, neqIntVal);
+#if REVIT2023_OR_GREATER
                     return ParameterFilterRuleFactory.CreateNotEqualsRule(paramId, value);
+#else
+                    return ParameterFilterRuleFactory.CreateNotEqualsRule(paramId, value, false);
+#endif
                 case "Contains":
+#if REVIT2023_OR_GREATER
                     return ParameterFilterRuleFactory.CreateContainsRule(paramId, value);
+#else
+                    return ParameterFilterRuleFactory.CreateContainsRule(paramId, value, false);
+#endif
                 case "DoesNotContain":
+#if REVIT2023_OR_GREATER
                     return ParameterFilterRuleFactory.CreateNotContainsRule(paramId, value);
+#else
+                    return ParameterFilterRuleFactory.CreateNotContainsRule(paramId, value, false);
+#endif
                 case "BeginsWith":
+#if REVIT2023_OR_GREATER
                     return ParameterFilterRuleFactory.CreateBeginsWithRule(paramId, value);
+#else
+                    return ParameterFilterRuleFactory.CreateBeginsWithRule(paramId, value, false);
+#endif
                 case "EndsWith":
+#if REVIT2023_OR_GREATER
                     return ParameterFilterRuleFactory.CreateEndsWithRule(paramId, value);
+#else
+                    return ParameterFilterRuleFactory.CreateEndsWithRule(paramId, value, false);
+#endif
+#if REVIT2020_OR_GREATER
                 case "HasValue":
                     return ParameterFilterRuleFactory.CreateHasValueParameterRule(paramId);
                 case "HasNoValue":
                     return ParameterFilterRuleFactory.CreateHasNoValueParameterRule(paramId);
+#else
+                case "HasValue":
+                case "HasNoValue":
+                    throw new NotSupportedException($"Filter rule '{ruleType}' requires Revit 2020 or newer");
+#endif
                 case "IsGreaterThan":
                     if (int.TryParse(value, out int gtVal))
                         return ParameterFilterRuleFactory.CreateGreaterRule(paramId, gtVal);
+#if REVIT2023_OR_GREATER
                     return ParameterFilterRuleFactory.CreateGreaterRule(paramId, value);
+#else
+                    return ParameterFilterRuleFactory.CreateGreaterRule(paramId, value, false);
+#endif
                 case "IsLessThan":
                     if (int.TryParse(value, out int ltVal))
                         return ParameterFilterRuleFactory.CreateLessRule(paramId, ltVal);
+#if REVIT2023_OR_GREATER
                     return ParameterFilterRuleFactory.CreateLessRule(paramId, value);
+#else
+                    return ParameterFilterRuleFactory.CreateLessRule(paramId, value, false);
+#endif
                 default:
                     throw new ArgumentException($"Unknown filter rule type: {ruleType}");
             }
