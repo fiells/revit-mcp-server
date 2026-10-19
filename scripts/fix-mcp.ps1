@@ -59,7 +59,15 @@ if ($_commonPath -and (Test-Path $_commonPath)) {
         return $result
     }
     function Get-McpServerPath {
-        foreach ($year in ($REVIT_YEARS | Sort-Object -Descending)) {
+        # Prefer the newest Revit that is actually installed: when it starts, the plugin
+        # writes its own server path, so using the same one avoids rewriting the config.
+        $years     = @($REVIT_YEARS | Sort-Object -Descending)
+        $installed = @($years | Where-Object {
+            (Test-Path "C:\Program Files\Autodesk\Revit $_\Revit.exe") -or
+            (Test-Path "HKLM:\SOFTWARE\Autodesk\Revit\Autodesk Revit $_") -or
+            (Test-Path "HKLM:\SOFTWARE\WOW6432Node\Autodesk\Revit\Autodesk Revit $_")
+        })
+        foreach ($year in ($installed + $years)) {
             $serverJs = "$env:APPDATA\Autodesk\Revit\Addins\$year\$PLUGIN_FOLDER\Commands\RevitMCPCommandSet\server\build\index.js"
             if (Test-Path $serverJs) { return $serverJs }
         }
@@ -67,22 +75,31 @@ if ($_commonPath -and (Test-Path $_commonPath)) {
     }
     function New-RevitMcpEntry {
         param([string]$ServerPath)
-        $nodePath = Get-NodePath
+        # Prefer the portable node.exe shipped next to the server, as the plugin does,
+        # so the scripts and the plugin write the same entry.
+        $bundledNode = Join-Path (Split-Path (Split-Path $ServerPath)) 'runtime\node.exe'
+        $nodePath = if (Test-Path $bundledNode) { $bundledNode } else { Get-NodePath }
         if ($nodePath) {
             return [PSCustomObject]@{ command = $nodePath; args = @($ServerPath) }
         }
+        # Last resort: rely on node in PATH via cmd shell
         return [PSCustomObject]@{ command = 'cmd'; args = @('/c', 'node', $ServerPath) }
     }
+    function Get-ClaudeDesktopCandidates {
+        $candidates = @()
+        $candidates += @(Get-ChildItem "$env:LOCALAPPDATA\Claude-Data" -Directory -Filter 'claude_*' -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.FullName })
+        $candidates += @(Get-ChildItem "$env:LOCALAPPDATA\Packages" -Directory -Filter 'Claude_*' -ErrorAction SilentlyContinue |
+            ForEach-Object { "$($_.FullName)\LocalCache\Roaming\Claude" })
+        $candidates += "$env:APPDATA\Claude"
+        return $candidates
+    }
+    function Get-ClaudeDesktopDirs {
+        return @(Get-ClaudeDesktopCandidates | Where-Object { $_ -and (Test-Path $_) })
+    }
     function Get-ClaudeDesktopDir {
-        $candidates = @(
-            "$env:APPDATA\Claude",
-            (Get-ChildItem "$env:LOCALAPPDATA\Packages" -Filter "Claude_*" -ErrorAction SilentlyContinue |
-                Select-Object -First 1 |
-                ForEach-Object { "$($_.FullName)\LocalCache\Roaming\Claude" })
-        )
-        foreach ($c in $candidates) {
-            if ($c -and (Test-Path $c)) { return $c }
-        }
+        $dirs = @(Get-ClaudeDesktopDirs)
+        if ($dirs.Count -gt 0) { return $dirs[0] }
         return $null
     }
     function Get-ClaudeDesktopConfig {
@@ -103,6 +120,32 @@ if ($_commonPath -and (Test-Path $_commonPath)) {
             } catch {}
         }
         return $result
+    }
+    function Set-ClaudeDesktopMcpEntry {
+        param([string]$ClaudeDir, [object]$Entry)
+        $cfgInfo = Get-ClaudeDesktopConfig $ClaudeDir
+        if ($cfgInfo.HasRevitMcp -and
+            $cfgInfo.RevitMcpEntry.command -eq $Entry.command -and
+            (@($cfgInfo.RevitMcpEntry.args) -join ' ') -eq (@($Entry.args) -join ' ')) {
+            return 'unchanged'
+        }
+        if ($cfgInfo.Exists) {
+            Copy-Item $cfgInfo.Path "$($cfgInfo.Path).$(Get-Date -Format 'yyyyMMdd_HHmmss').bak" -Force
+        }
+        $config = if ($null -ne $cfgInfo.Config) { $cfgInfo.Config } else { [PSCustomObject]@{} }
+        if ($null -eq $config.mcpServers) {
+            $config | Add-Member -NotePropertyName 'mcpServers' -NotePropertyValue ([PSCustomObject]@{}) -Force
+        }
+        $config.mcpServers | Add-Member -NotePropertyName 'revit-mcp' -NotePropertyValue $Entry -Force
+        New-Item -ItemType Directory -Path $ClaudeDir -Force | Out-Null
+        # UTF-8 without BOM: Set-Content -Encoding UTF8 in Windows PowerShell 5.1 adds a BOM,
+        # which Node-based readers such as Claude Desktop can fail to parse.
+        $json = $config | ConvertTo-Json -Depth 10
+        $filePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($cfgInfo.Path)
+        [System.IO.File]::WriteAllText($filePath, $json, (New-Object System.Text.UTF8Encoding $false))
+        if (-not $cfgInfo.Exists) { return 'created' }
+        if ($null -eq $cfgInfo.Config) { return 'recreated' }
+        return 'updated'
     }
     function Test-RevitInstalled {
         param([int]$Year)
@@ -171,20 +214,19 @@ if ($serverPath) {
 # ── 3. Claude Desktop config ─────────────────────────────────────────────────
 HEAD "3. Claude Desktop configuration"
 
-# Find config folder -- standard install or MSIX (Microsoft Store)
-$claudeDir = Get-ClaudeDesktopDir
+# Claude Desktop keeps its config in different folders depending on how it was
+# installed; configure every one that exists.
+$claudeDirs = @(Get-ClaudeDesktopDirs)
 
-if (-not $claudeDir) {
+if ($claudeDirs.Count -eq 0) {
     # Claude not installed yet -- create the standard path
-    $claudeDir = "$env:APPDATA\Claude"
-    New-Item -ItemType Directory -Path $claudeDir -Force | Out-Null
-    WARN "Claude Desktop folder not found -- created $claudeDir"
+    $claudeDirs = @("$env:APPDATA\Claude")
+    New-Item -ItemType Directory -Path $claudeDirs[0] -Force | Out-Null
+    WARN "Claude Desktop folder not found -- created $($claudeDirs[0])"
     INFO "Make sure Claude Desktop is installed: https://claude.ai/download"
 } else {
-    OK "Claude Desktop folder: $claudeDir"
+    foreach ($claudeDir in $claudeDirs) { OK "Claude Desktop folder: $claudeDir" }
 }
-
-$configPath = Join-Path $claudeDir "claude_desktop_config.json"
 
 # Build the config entry using the local server
 if ($serverPath) {
@@ -195,70 +237,31 @@ if ($serverPath) {
     WARN "Cannot configure Claude Desktop -- local server not found"
 }
 
-$needWrite = $false
-
 if (-not $mcpEntry) {
     WARN "Skipping Claude Desktop configuration -- no server available"
-} elseif (Test-Path $configPath) {
-    try {
-        $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
-    } catch {
-        WARN "Existing claude_desktop_config.json is invalid JSON -- will overwrite"
-        $cfg = $null
-    }
-
-    if ($cfg) {
-        $existing = $cfg.mcpServers.'revit-mcp'
-        if ($existing) {
-            $existingCmd  = $existing.command
-            $existingArgs = if ($existing.args) { $existing.args -join ' ' } else { '' }
-            $wantedArgs   = if ($mcpEntry.args) { $mcpEntry.args -join ' ' } else { '' }
-
-            if ($existingCmd -eq $mcpEntry.command -and $existingArgs -eq $wantedArgs) {
-                OK "revit-mcp entry is already correct"
-            } else {
-                WARN "revit-mcp entry exists but points to: $existingCmd $existingArgs"
-                INFO "Expected: $($mcpEntry.command) $wantedArgs"
-                $needWrite = $true
-            }
-        } else {
-            WARN "revit-mcp entry missing from config"
-            $needWrite = $true
-        }
-    } else {
-        $needWrite = $true
-    }
 } else {
-    INFO "Config file does not exist -- will create"
-    $needWrite = $true
+    foreach ($claudeDir in $claudeDirs) {
+        $before = Get-ClaudeDesktopConfig $claudeDir
+        $state  = Set-ClaudeDesktopMcpEntry $claudeDir $mcpEntry
+        switch ($state) {
+            'unchanged' { OK "revit-mcp entry is already correct" }
+            'created'   { FIXED "claude_desktop_config.json created" }
+            'recreated' {
+                WARN "Existing claude_desktop_config.json was invalid JSON -- backed up"
+                FIXED "claude_desktop_config.json recreated"
+            }
+            default {
+                if ($before.HasRevitMcp) {
+                    WARN "revit-mcp entry pointed to: $($before.RevitMcpEntry.command) $(@($before.RevitMcpEntry.args) -join ' ')"
+                } else {
+                    WARN "revit-mcp entry missing from config"
+                }
+                FIXED "claude_desktop_config.json updated"
+            }
+        }
+        INFO $before.Path
+    }
 }
-
-if ($needWrite) {
-    # Merge safely: keep any other mcpServers the user may have, and keep preferences
-    if (-not $cfg) {
-        $cfg = [PSCustomObject]@{ mcpServers = [PSCustomObject]@{} }
-    }
-    if (-not $cfg.mcpServers) {
-        $cfg | Add-Member -NotePropertyName 'mcpServers' -NotePropertyValue ([PSCustomObject]@{}) -Force
-    }
-    $cfg.mcpServers | Add-Member -NotePropertyName 'revit-mcp' -NotePropertyValue $mcpEntry -Force
-
-    $json = $cfg | ConvertTo-Json -Depth 10
-    Set-Content -Path $configPath -Value $json -Encoding UTF8
-    FIXED "claude_desktop_config.json updated"
-    INFO $configPath
-}
-
-# Show final config entry
-try {
-    $final = Get-Content $configPath -Raw | ConvertFrom-Json
-    $srv   = $final.mcpServers.'revit-mcp'
-    if ($srv) {
-        INFO "Config entry:"
-        INFO "  command : $($srv.command)"
-        if ($srv.args) { INFO "  args    : $($srv.args -join ' ')" }
-    }
-} catch {}
 
 
 # ── 4. Revit plugin ───────────────────────────────────────────────────────────

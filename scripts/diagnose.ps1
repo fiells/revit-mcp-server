@@ -55,25 +55,22 @@ if ($_commonPath -and (Test-Path $_commonPath)) {
         if ([string]::IsNullOrWhiteSpace($prefix)) { return $null }
         return $prefix
     }
-    function Get-ClaudeDesktopDir {
-        $candidates = @(
-            "$env:APPDATA\Claude",
-            (Get-ChildItem "$env:LOCALAPPDATA\Packages" -Filter "Claude_*" -ErrorAction SilentlyContinue |
-                Select-Object -First 1 |
-                ForEach-Object { "$($_.FullName)\LocalCache\Roaming\Claude" })
-        )
-        foreach ($c in $candidates) {
-            if ($c -and (Test-Path $c)) { return $c }
-        }
-        return $null
-    }
     function Get-ClaudeDesktopCandidates {
-        return @(
-            "$env:APPDATA\Claude",
-            (Get-ChildItem "$env:LOCALAPPDATA\Packages" -Filter "Claude_*" -ErrorAction SilentlyContinue |
-                Select-Object -First 1 |
-                ForEach-Object { "$($_.FullName)\LocalCache\Roaming\Claude" })
-        )
+        $candidates = @()
+        $candidates += @(Get-ChildItem "$env:LOCALAPPDATA\Claude-Data" -Directory -Filter 'claude_*' -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.FullName })
+        $candidates += @(Get-ChildItem "$env:LOCALAPPDATA\Packages" -Directory -Filter 'Claude_*' -ErrorAction SilentlyContinue |
+            ForEach-Object { "$($_.FullName)\LocalCache\Roaming\Claude" })
+        $candidates += "$env:APPDATA\Claude"
+        return $candidates
+    }
+    function Get-ClaudeDesktopDirs {
+        return @(Get-ClaudeDesktopCandidates | Where-Object { $_ -and (Test-Path $_) })
+    }
+    function Get-ClaudeDesktopDir {
+        $dirs = @(Get-ClaudeDesktopDirs)
+        if ($dirs.Count -gt 0) { return $dirs[0] }
+        return $null
     }
     function Get-ClaudeDesktopConfig {
         param([string]$ClaudeDir)
@@ -217,76 +214,83 @@ if ($npxCmd) {
 # ============================================================================
 Head "2. Claude Desktop"
 
-$claudeDir  = Get-ClaudeDesktopDir
-$candidates = Get-ClaudeDesktopCandidates
+$claudeDirs = @(Get-ClaudeDesktopDirs)
+$candidates = @(Get-ClaudeDesktopCandidates)
 
 # Show all candidate paths (whether they exist or not)
 Sub "Candidate paths checked:"
 foreach ($c in $candidates) {
-    if (-not $c) { continue }
-    if (Test-Path $c) {
-        FileOk $c
-        if ($claudeDir -eq $c) { Info "  ^ ACTIVE path" }
-    } else {
-        FileMiss $c
-    }
+    if (Test-Path $c) { FileOk $c } else { FileMiss $c }
 }
 
-if ($claudeDir) {
-    Pass "Claude Desktop folder: $claudeDir"
-} else {
+if ($claudeDirs.Count -eq 0) {
     Fail "Claude Desktop folder not found -- install Claude Desktop first"
+} elseif ($claudeDirs.Count -gt 1) {
+    Info "Several Claude Desktop folders exist; the plugin and installer configure all of them."
+    Info "Claude Desktop > Settings > Developer > Edit config opens the one it actually reads."
 }
 
-$cfgInfo      = if ($claudeDir) { Get-ClaudeDesktopConfig $claudeDir } else { $null }
-$claudeConfig = if ($cfgInfo) { $cfgInfo.Path } else { $null }
+foreach ($claudeDir in $claudeDirs) {
+    Pass "Claude Desktop folder: $claudeDir"
+    $cfgInfo      = Get-ClaudeDesktopConfig $claudeDir
+    $claudeConfig = $cfgInfo.Path
 
-if ($cfgInfo -and $cfgInfo.Exists) {
-    Pass "claude_desktop_config.json exists"
-    FileOk $claudeConfig
-    Sub "Contents:"
-    Get-Content $claudeConfig | ForEach-Object { Info "  $_" }
+    if ($cfgInfo.Exists) {
+        Pass "claude_desktop_config.json exists"
+        FileOk $claudeConfig
+        Sub "Contents:"
+        Get-Content $claudeConfig | ForEach-Object { Info "  $_" }
 
-    if ($cfgInfo.Config) {
-        if ($cfgInfo.HasRevitMcp) {
-            $srv = $cfgInfo.RevitMcpEntry
-            Pass "revit-mcp entry found"
-            Info "  command : $($srv.command)"
-            if ($srv.args) {
-                Info "  args    : $($srv.args -join ' ')"
-                # Verify the .cmd path referenced in the config
-                $configCmd = $srv.args | Where-Object { $_ -match '\.cmd$' } | Select-Object -First 1
-                if ($configCmd) {
-                    if (Test-Path $configCmd) {
-                        Pass ".cmd path in config exists"
-                        FileOk $configCmd
-                    } else {
-                        Fail ".cmd path in config MISSING"
-                        FileMiss $configCmd
+        if ($cfgInfo.Config) {
+            if ($cfgInfo.HasRevitMcp) {
+                $srv = $cfgInfo.RevitMcpEntry
+                Pass "revit-mcp entry found"
+                Info "  command : $($srv.command)"
+                if ($srv.args) {
+                    Info "  args    : $($srv.args -join ' ')"
+                    # Verify the .cmd path referenced in the config
+                    $configCmd = $srv.args | Where-Object { $_ -match '\.cmd$' } | Select-Object -First 1
+                    if ($configCmd) {
+                        if (Test-Path $configCmd) {
+                            Pass ".cmd path in config exists"
+                            FileOk $configCmd
+                        } else {
+                            Fail ".cmd path in config MISSING"
+                            FileMiss $configCmd
+                        }
                     }
                 }
+            } else {
+                Fail "revit-mcp entry NOT found in mcpServers"
+                Info "  Run the installer to configure it automatically"
             }
         } else {
-            Fail "revit-mcp entry NOT found in mcpServers"
-            Info "  Run the installer to configure it automatically"
+            Fail "Could not parse claude_desktop_config.json"
+        }
+
+        # Other Revit MCP servers (e.g. the old npm package run through npx) start in
+        # parallel and expose a different, older tool set.
+        if ($cfgInfo.Config -and $cfgInfo.Config.mcpServers) {
+            foreach ($prop in $cfgInfo.Config.mcpServers.PSObject.Properties) {
+                if ($prop.Name -eq 'revit-mcp') { continue }
+                $line = "$($prop.Value.command) $(@($prop.Value.args) -join ' ')"
+                if ($prop.Name -match 'revit' -or $line -match 'revit') {
+                    Warn "Other Revit MCP server '$($prop.Name)': $line"
+                    Info "  Remove it from the config so Claude uses only revit-mcp"
+                }
+            }
         }
     } else {
-        Fail "Could not parse claude_desktop_config.json"
+        Fail "claude_desktop_config.json NOT found in $claudeDir"
+        FileMiss $claudeConfig
+        Info "Run the installer to create it"
     }
-} elseif ($claudeDir) {
-    Fail "claude_desktop_config.json NOT found in $claudeDir"
-    FileMiss "$claudeDir\claude_desktop_config.json"
-    Info "Run the installer to create it"
-} else {
-    Warn "Cannot check config -- Claude Desktop folder not found"
 }
 
 # MCP server logs
 Sub "MCP server log files:"
-$logCandidates = @(
-    (& { if ($claudeDir) { "$claudeDir\logs" } }),
-    "$env:APPDATA\Claude\logs"
-) | Where-Object { $_ }
+$logCandidates = @($claudeDirs | ForEach-Object { "$_\logs" }) + "$env:APPDATA\Claude\logs" |
+    Select-Object -Unique
 foreach ($logDir in $logCandidates) {
     if (Test-Path $logDir) {
         $logs = Get-ChildItem $logDir -Filter "mcp*.log" -ErrorAction SilentlyContinue
