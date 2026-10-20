@@ -98,6 +98,8 @@ namespace revit_mcp_plugin.Core
                 // Use cached assembly and types
                 if (!_assemblyCache.TryGetValue(assemblyPath, out var cached))
                 {
+                    // Let the command set's own dependencies satisfy version mismatches
+                    AssemblyResolver.AddDirectory(Path.GetDirectoryName(assemblyPath));
                     Assembly assembly = Assembly.LoadFrom(assemblyPath);
 
                     // GetTypes() only once per assembly
