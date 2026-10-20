@@ -87,7 +87,7 @@ namespace RevitMCPCommandSet.Commands.ExecuteDynamicCode
             catch (Exception ex)
             {
                 ResultInfo.Success = false;
-                ResultInfo.ErrorMessage = $"Execution failed: {ex.Message}";
+                ResultInfo.ErrorMessage = $"Execution failed: {DescribeException(ex)}";
             }
             finally
             {
@@ -159,6 +159,16 @@ namespace AIGeneratedCode
 
                 return executeMethod.Invoke(null, new object[] { doc, parameters });
             }
+        }
+
+        // The outer message alone ("Exception has been thrown by the target of an invocation",
+        // "The type initializer for ... threw an exception") hides the cause, so include the chain.
+        private static string DescribeException(Exception ex)
+        {
+            var messages = new List<string>();
+            for (var e = ex; e != null; e = e.InnerException)
+                messages.Add(e.Message);
+            return string.Join(" -> ", messages);
         }
 
         public string GetName()
