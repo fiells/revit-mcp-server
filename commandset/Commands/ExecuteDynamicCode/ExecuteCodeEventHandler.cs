@@ -1,8 +1,5 @@
-using System.IO;
 using System.Reflection;
 using Autodesk.Revit.UI;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Newtonsoft.Json;
 using RevitMCPSDK.API.Interfaces;
 
@@ -118,47 +115,22 @@ namespace AIGeneratedCode
     }}
 }}";
 
-            var syntaxTree = CSharpSyntaxTree.ParseText(wrappedCode);
-
             // Add required assembly references (deduplicate by simple name to avoid conflicts
             // caused by addins like BIM360 loading assemblies with the same name)
-            var references = AppDomain.CurrentDomain.GetAssemblies()
+            var referencePaths = AppDomain.CurrentDomain.GetAssemblies()
                 .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
                 .GroupBy(a => a.GetName().Name)
-                .Select(g => g.First())
-                .Select(a => MetadataReference.CreateFromFile(a.Location))
-                .Cast<MetadataReference>()
-                .ToList();
+                .Select(g => g.First().Location)
+                .ToArray();
 
-            // Compile code
-            var compilation = CSharpCompilation.Create(
-                "AIGeneratedCode",
-                syntaxTrees: new[] { syntaxTree },
-                references: references,
-                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
-            );
+            byte[] image = RoslynCompiler.Compile(wrappedCode, referencePaths);
 
-            using (var ms = new MemoryStream())
-            {
-                var result = compilation.Emit(ms);
+            // Invoke execution method via reflection
+            var assembly = Assembly.Load(image);
+            var executorType = assembly.GetType("AIGeneratedCode.CodeExecutor");
+            var executeMethod = executorType.GetMethod("Execute");
 
-                // Handle compilation result
-                if (!result.Success)
-                {
-                    var errors = string.Join("\n", result.Diagnostics
-                        .Where(d => d.Severity == DiagnosticSeverity.Error)
-                        .Select(d => $"Line {d.Location.GetLineSpan().StartLinePosition.Line}: {d.GetMessage()}"));
-                    throw new Exception($"Code compilation error:\n{errors}");
-                }
-
-                // Invoke execution method via reflection
-                ms.Seek(0, SeekOrigin.Begin);
-                var assembly = Assembly.Load(ms.ToArray());
-                var executorType = assembly.GetType("AIGeneratedCode.CodeExecutor");
-                var executeMethod = executorType.GetMethod("Execute");
-
-                return executeMethod.Invoke(null, new object[] { doc, parameters });
-            }
+            return executeMethod.Invoke(null, new object[] { doc, parameters });
         }
 
         // The outer message alone ("Exception has been thrown by the target of an invocation",
